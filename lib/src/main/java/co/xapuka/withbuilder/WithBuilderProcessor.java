@@ -3,6 +3,8 @@
  */
 package co.xapuka.withbuilder;
 
+import co.xapuka.withbuilder.exception.NoConstructorFound;
+
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.SourceVersion;
@@ -29,24 +31,29 @@ public class WithBuilderProcessor extends AbstractProcessor {
         if (annotations == null || annotations.isEmpty()) {
             return false;
         }
-        pm("Processing WithBuilder...");
 
-        Set<? extends Element> annotatedElements = roundEnv.getElementsAnnotatedWith(annotations.iterator().next());
-        annotatedElements.forEach(ann -> {
+        Set<? extends Element> annotatedElements = roundEnv.getElementsAnnotatedWith(WithBuilder.class);
+        if(annotatedElements != null && !annotatedElements.isEmpty()) {
+            pm("Processing WithBuilder...");
+        }
+        for(Element annotatedElement: annotatedElements) {
+            TypeElement typeElement;
+            try {
+                typeElement = getTypeElement(annotatedElement);
+            } catch(NoConstructorFound e) {
+                return reportError("No constructor found!", annotatedElement);
+            }
+            ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, annotatedElement.getAnnotation(WithBuilder.class).suffix());
 
-            TypeElement typeElement = getTypeElement(ann);
-
-            ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, ann.getAnnotation(WithBuilder.class).suffix());
-
-            Map<String, String> fieldsAndTheirTypes = ann.getEnclosedElements().stream()
+            Map<String, String> fieldsAndTheirTypes = annotatedElement.getEnclosedElements().stream()
                     .filter(e -> FIELD == e.getKind())
                     .collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                return reportError(e.getMessage(), annotatedElement);
             }
-        });
+        };
 
         return false;
     }
@@ -119,14 +126,14 @@ public class WithBuilderProcessor extends AbstractProcessor {
         return s;
     }
 
-    private TypeElement getTypeElement(Element ann) {
-        TypeElement typeElement = ann.getEnclosedElements()
+    private TypeElement getTypeElement(Element element) throws NoConstructorFound {
+        TypeElement typeElement = element.getEnclosedElements()
                 .stream()
                 .filter(e -> CONSTRUCTOR == e.getKind())
                 .map(e -> e.getEnclosingElement())
                 .map(e -> (TypeElement) e)
                 .reduce((x, y) -> x)
-                .orElseThrow(RuntimeException::new);
+                .orElseThrow(NoConstructorFound::new);
         return typeElement;
     }
 
@@ -142,5 +149,10 @@ public class WithBuilderProcessor extends AbstractProcessor {
 
     private void pm(String message) {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, message);
+    }
+
+    private boolean reportError (String message, Element element) {
+        processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, message, element);
+        return true;
     }
 }
