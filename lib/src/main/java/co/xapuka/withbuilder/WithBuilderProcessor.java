@@ -134,7 +134,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
 
     private void writeFile(ClassAndPackageName classAndPackageName, Map<String, String> fieldsAndTheirTypes) throws IOException {
         final String builderName = classAndPackageName.getBuilderClassName();
-        JavaFileObject builderFile = processingEnv.getFiler().createSourceFile(builderName);
+        JavaFileObject builderFile = processingEnv.getFiler().createSourceFile( classAndPackageName.getPackageName()+"."+ classAndPackageName.getBuilderClassName());
         try (PrintWriter out = new PrintWriter(builderFile.openWriter())) {
             out.println("package " + classAndPackageName.getPackageName() + ";");
             out.println("public final class " + builderName + "{");
