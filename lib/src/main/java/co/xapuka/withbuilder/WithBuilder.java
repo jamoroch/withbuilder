@@ -11,4 +11,5 @@ import java.lang.annotation.*;
  */
 public @interface WithBuilder {
     String suffix() default "Builder";
+    boolean debug() default false;
 }

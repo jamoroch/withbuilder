@@ -10,16 +10,21 @@ import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.DeclaredType;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static javax.lang.model.element.ElementKind.*;
+import static javax.lang.model.element.Modifier.FINAL;
+import static javax.lang.model.element.Modifier.STATIC;
 
 public class WithBuilderProcessor extends AbstractProcessor {
     public boolean someLibraryMethod() {
@@ -37,16 +42,24 @@ public class WithBuilderProcessor extends AbstractProcessor {
             pm("Processing WithBuilder...");
         }
         for(Element annotatedElement: annotatedElements) {
+            final WithBuilder annotation = annotatedElement.getAnnotation(WithBuilder.class);
+            final List<? extends Element> enclosedElements = annotatedElement.getEnclosedElements();
+            if(annotation.debug()) {
+                pm("In Debugging");
+                enclosedElements.forEach(el -> pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind()));
+                return false;
+            }
+
             TypeElement typeElement;
             try {
                 typeElement = getTypeElement(annotatedElement);
             } catch(NoConstructorFound e) {
                 return reportError("No constructor found!", annotatedElement);
             }
-            ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, annotatedElement.getAnnotation(WithBuilder.class).suffix());
+            ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, annotation.suffix());
 
-            Map<String, String> fieldsAndTheirTypes = annotatedElement.getEnclosedElements().stream()
-                    .filter(e -> FIELD == e.getKind())
+            Map<String, String> fieldsAndTheirTypes = enclosedElements.stream()
+                    .filter(e -> onlyInstanceFields().test(e))
                     .collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
@@ -56,6 +69,11 @@ public class WithBuilderProcessor extends AbstractProcessor {
         };
 
         return false;
+    }
+
+    Predicate<Element> onlyInstanceFields() {
+        return e -> (FIELD == e.getKind() ) &&
+                e.getModifiers().stream().filter(m -> (FINAL == m || STATIC == m)).count() == 0;
     }
 
     private void writeFile(ClassAndPackageName classAndPackageName, Map<String, String> fieldsAndTheirTypes) throws IOException {
