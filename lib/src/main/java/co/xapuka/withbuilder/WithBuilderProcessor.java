@@ -9,22 +9,25 @@ import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static javax.lang.model.element.ElementKind.*;
 import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.STATIC;
+import static javax.lang.model.type.TypeKind.NONE;
 
 public class WithBuilderProcessor extends AbstractProcessor {
     public boolean someLibraryMethod() {
@@ -44,10 +47,27 @@ public class WithBuilderProcessor extends AbstractProcessor {
         for(Element annotatedElement: annotatedElements) {
             final WithBuilder annotation = annotatedElement.getAnnotation(WithBuilder.class);
             final List<? extends Element> enclosedElements = annotatedElement.getEnclosedElements();
-            if(annotation.debug()) {
+            final boolean isDebugActive = annotation.debug();
+            if(isDebugActive) {
                 pm("In Debugging");
-                enclosedElements.forEach(el -> pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind()));
+                enclosedElements.forEach(el -> {
+                    pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind());
+                    if(el instanceof ExecutableElement) {
+                        pm("ExecutableElement: " + ((ExecutableElement)el).getSimpleName().toString());
+                    }
+                });
                 return false;
+            }
+
+
+            Map<Boolean, List<Element>> partion = enclosedElements.stream().collect(Collectors.partitioningBy(this::onlyInstanceFields));
+            Map<String, String> fieldsAndTheirTypes =
+                    partion.get(true).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
+
+            boolean didValidate = validateSetters(partion.get(false).stream(), fieldsAndTheirTypes, annotatedElement);
+
+            if(!didValidate) {
+                return true;
             }
 
             TypeElement typeElement;
@@ -58,9 +78,6 @@ public class WithBuilderProcessor extends AbstractProcessor {
             }
             ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, annotation.suffix());
 
-            Map<String, String> fieldsAndTheirTypes = enclosedElements.stream()
-                    .filter(e -> onlyInstanceFields().test(e))
-                    .collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
             } catch (IOException e) {
@@ -71,8 +88,47 @@ public class WithBuilderProcessor extends AbstractProcessor {
         return false;
     }
 
-    Predicate<Element> onlyInstanceFields() {
-        return e -> (FIELD == e.getKind() ) &&
+    private boolean validateSetters(Stream<Element> noFields, Map<String, String> fieldsAndTheirTypes, Element annotatedElement) {
+        List<Element> setters = noFields.collect(Collectors.partitioningBy(this::onlySetter)).get(true);
+
+        Collection<String> onlyFieldNames = new ArrayList<>(fieldsAndTheirTypes.keySet());
+
+        List<String> settersNames = setters.stream().map(Element::getSimpleName).map(Name::toString).collect(Collectors.toList());
+        for (String fieldName: fieldsAndTheirTypes.keySet()) {
+            String setterName = "set"+capitalize(fieldName);
+
+            if(settersNames.stream().filter(n -> n.equals(setterName)).count() != 0) {
+                onlyFieldNames.remove(fieldName);
+            }
+        }
+        onlyFieldNames.stream().forEach( n -> reportError("No setter found for field " + n , annotatedElement));
+
+        if(onlyFieldNames.size() != 0) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private  boolean onlySetter(Element element) {
+        if(!(element instanceof ExecutableElement)) {
+            return false;
+        }
+        ExecutableElement executableElement = (ExecutableElement) element;
+        if(executableElement.getParameters().size() != 1) {
+            return false;
+        }
+        if(executableElement.getReturnType().getKind() != TypeKind.VOID) {
+            return false;
+        }
+        if(!executableElement.getSimpleName().toString().matches("^set.*")){
+            return false;
+        }
+        return true;
+    }
+
+    private boolean onlyInstanceFields(Element e) {
+        return (FIELD == e.getKind() ) &&
                 e.getModifiers().stream().filter(m -> (FINAL == m || STATIC == m)).count() == 0;
     }
 
