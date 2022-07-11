@@ -12,22 +12,18 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
-import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.*;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static javax.lang.model.element.ElementKind.*;
 import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.STATIC;
-import static javax.lang.model.type.TypeKind.NONE;
 
 public class WithBuilderProcessor extends AbstractProcessor {
     public boolean someLibraryMethod() {
@@ -95,7 +91,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
 
         List<String> settersNames = setters.stream().map(Element::getSimpleName).map(Name::toString).collect(Collectors.toList());
         for (String fieldName: fieldsAndTheirTypes.keySet()) {
-            String setterName = "set"+capitalize(fieldName);
+            String setterName = "set"+BuilderClassGenerator.capitalize(fieldName);
 
             if(settersNames.stream().filter(n -> n.equals(setterName)).count() != 0) {
                 onlyFieldNames.remove(fieldName);
@@ -132,73 +128,21 @@ public class WithBuilderProcessor extends AbstractProcessor {
                 e.getModifiers().stream().filter(m -> (FINAL == m || STATIC == m)).count() == 0;
     }
 
-    private void writeFile(ClassAndPackageName classAndPackageName, Map<String, String> fieldsAndTheirTypes) throws IOException {
-        final String builderName = classAndPackageName.getBuilderClassName();
-        JavaFileObject builderFile = processingEnv.getFiler().createSourceFile( classAndPackageName.getPackageName()+"."+ classAndPackageName.getBuilderClassName());
+    private synchronized void writeFile(ClassAndPackageName classAndPackageName, Map<String, String> fieldsAndTheirTypes) throws IOException {
+
+        JavaFileObject builderFile = processingEnv.getFiler().createSourceFile(classAndPackageName.getPackageName() + "." + classAndPackageName.getBuilderClassName());
         try (PrintWriter pw = new PrintWriter(builderFile.openWriter())) {
-            pw.printf("package %s;\n", classAndPackageName.getPackageName())
-              .printf("public final class %s {\n", builderName);
+            BuilderClassGenerator generator = new BuilderClassGenerator(classAndPackageName, fieldsAndTheirTypes, pw);
 
-            writeInit(builderName, pw);
-
-            writeMutators(fieldsAndTheirTypes, builderName, pw);
-
-            withBuildMethod(classAndPackageName, fieldsAndTheirTypes.keySet(), pw);
-
-            writeConstructor(builderName, pw);
-
-            writeFields(fieldsAndTheirTypes, builderName, pw);
-
-            pw.println("}");
+            generator.writeInit();
+            generator.writeMutators();
+            generator.withBuildMethod();
+            generator.writePrivateDefaultConstructor();
+            generator.writeFields();
+            generator.writeEnd();
         }
     }
 
-    private void writeConstructor(String builderName, PrintWriter pw) {
-        pw.printf("private %s(){};\n", builderName);
-    }
-
-    private void writeInit(String builderName, PrintWriter pw) {
-        pw.printf("public static %s newInstance() {\n", builderName)
-           .printf("return new %s();\n", builderName)
-           .printf("}\n");
-
-
-    }
-
-    private void withBuildMethod(ClassAndPackageName classAndPackageName, Collection<String> fields, PrintWriter pw) {
-        final String targetClassName = classAndPackageName.getClassName();
-
-        pw.printf("public %s build() {\n", targetClassName)
-           .printf("%s instance = new %s();\n", targetClassName, targetClassName);
-        for (String field : fields) {
-            pw.printf("instance.set%s(this.%s);\n", capitalize(field), field);
-        }
-        pw.printf("return instance;\n")
-           .printf("}\n");
-    }
-
-    private void writeFields(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter pw) {
-        for (Map.Entry<String, String> entry : fieldsAndTheirTypes.entrySet()) {
-            pw.printf("private  %s  %s ;\n", entry.getValue(), entry.getKey());
-        }
-    }
-
-    private void writeMutators(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter pw) {
-        for (Map.Entry<String, String> entry : fieldsAndTheirTypes.entrySet()) {
-            final String parameterType = entry.getValue();
-            final String parameterName = entry.getKey();
-            pw.printf("public %s with%s( %s %s ){\n", builderName, capitalize(parameterName), parameterType, parameterName )
-               .printf("this.%s = %s;\n", parameterName ,parameterName)
-               .printf("return this;\n")
-               .printf("}\n");
-        }
-    }
-
-    private String capitalize(String parameterName) {
-        final String s = parameterName.substring(0, 1).toUpperCase() +
-                parameterName.substring(1).toLowerCase();
-        return s;
-    }
 
     private TypeElement getTypeElement(Element element) throws NoConstructorFound {
         TypeElement typeElement = element.getEnclosedElements()
