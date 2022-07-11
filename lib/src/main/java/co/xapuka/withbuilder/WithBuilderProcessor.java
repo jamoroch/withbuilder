@@ -135,62 +135,62 @@ public class WithBuilderProcessor extends AbstractProcessor {
     private void writeFile(ClassAndPackageName classAndPackageName, Map<String, String> fieldsAndTheirTypes) throws IOException {
         final String builderName = classAndPackageName.getBuilderClassName();
         JavaFileObject builderFile = processingEnv.getFiler().createSourceFile( classAndPackageName.getPackageName()+"."+ classAndPackageName.getBuilderClassName());
-        try (PrintWriter out = new PrintWriter(builderFile.openWriter())) {
-            out.println("package " + classAndPackageName.getPackageName() + ";");
-            out.println("public final class " + builderName + "{");
+        try (PrintWriter pw = new PrintWriter(builderFile.openWriter())) {
+            pw.printf("package %s;\n", classAndPackageName.getPackageName())
+              .printf("public final class %s {\n", builderName);
 
-            writeInit(builderName, out);
+            writeInit(builderName, pw);
 
-            writeMutators(fieldsAndTheirTypes, builderName, out);
+            writeMutators(fieldsAndTheirTypes, builderName, pw);
 
-            withBuildMethod(classAndPackageName, fieldsAndTheirTypes.keySet(), out);
+            withBuildMethod(classAndPackageName, fieldsAndTheirTypes.keySet(), pw);
 
-            writeConstructor(builderName, out);
+            writeConstructor(builderName, pw);
 
-            writeFields(fieldsAndTheirTypes, builderName, out);
+            writeFields(fieldsAndTheirTypes, builderName, pw);
 
-            out.println("}");
+            pw.println("}");
         }
     }
 
-    private void writeConstructor(String builderName, PrintWriter out) {
-        out.println("private " + builderName + "(){};");
+    private void writeConstructor(String builderName, PrintWriter pw) {
+        pw.printf("private %s(){};\n", builderName);
     }
 
-    private void writeInit(String builderName, PrintWriter out) {
-        out.println("public static "+ builderName + " newInstance() {");
-        out.println("return new "+ builderName + "();");
-        out.println("}");
+    private void writeInit(String builderName, PrintWriter pw) {
+        pw.printf("public static %s newInstance() {\n", builderName)
+           .printf("return new %s();\n", builderName)
+           .printf("}\n");
+
+
     }
 
-    private void withBuildMethod(ClassAndPackageName classAndPackageName, Collection<String> fields, PrintWriter out) {
+    private void withBuildMethod(ClassAndPackageName classAndPackageName, Collection<String> fields, PrintWriter pw) {
         final String targetClassName = classAndPackageName.getClassName();
-        out.println("public "+ targetClassName +" build() {");
-        final String instance = "instance";
-        out.println(targetClassName + " " + instance + " = new " + targetClassName +"();");
-        for(String field: fields) {
-            out.println(instance + ".set" + capitalize(field) + "(this."+field+");");
+
+        pw.printf("public %s build() {\n", targetClassName)
+           .printf("%s instance = new %s();\n", targetClassName, targetClassName);
+        for (String field : fields) {
+            pw.printf("instance.set%s(this.%s);\n", capitalize(field), field);
         }
-        out.println("return " + instance + ";");
-        out.println("}");
+        pw.printf("return instance;\n")
+           .printf("}\n");
     }
 
-    private void writeFields(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter out) {
+    private void writeFields(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter pw) {
         for (Map.Entry<String, String> entry : fieldsAndTheirTypes.entrySet()) {
-            out.println("private " + entry.getValue() + " " + entry.getKey() + ";");
+            pw.printf("private  %s  %s ;\n", entry.getValue(), entry.getKey());
         }
     }
 
-    private void writeMutators(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter out) {
+    private void writeMutators(Map<String, String> fieldsAndTheirTypes, String builderName, PrintWriter pw) {
         for (Map.Entry<String, String> entry : fieldsAndTheirTypes.entrySet()) {
             final String parameterType = entry.getValue();
             final String parameterName = entry.getKey();
-            out.println("public " + builderName + " with" +
-                    capitalize(parameterName) +
-                    "(" + parameterType + " " + parameterName + "){");
-            out.println("this." + parameterName + " = " + parameterName + ";");
-            out.println("return this;");
-            out.println("}");
+            pw.printf("public %s with%s( %s %s ){\n", builderName, capitalize(parameterName), parameterType, parameterName )
+               .printf("this.%s = %s;\n", parameterName ,parameterName)
+               .printf("return this;\n")
+               .printf("}\n");
         }
     }
 
