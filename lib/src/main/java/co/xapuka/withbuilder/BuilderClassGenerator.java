@@ -20,7 +20,7 @@ private final PrintWriter pw;
     }
 
     public void writePrivateDefaultConstructor() {
-        pw.printf("private %s(){};\n", classAndPackageName.getBuilderClassName());
+        pw.printf("private %s() {};\n", classAndPackageName.getBuilderClassName());
     }
 
     public void writeInit() {
@@ -28,8 +28,7 @@ private final PrintWriter pw;
         pw.printf("package %s;\n", classAndPackageName.getPackageName())
                 .printf("public final class %s {\n", classAndPackageName.getBuilderClassName())
                 .printf("public static %s newInstance() {\n", builderName)
-                .printf("return new %s();\n", builderName)
-                .printf(closingBracketLineBreak());
+                .printf(returnAndClose(String.format("new %s()", builderName)));
 
 
     }
@@ -37,13 +36,12 @@ private final PrintWriter pw;
     public void withBuildMethod() {
         final String targetClassName = classAndPackageName.getClassName();
 
-        pw.printf("public %s build() {\n", targetClassName)
+        pw.printf("public %s build() %s", targetClassName, openingBracketLineBreak())
                 .printf("%s instance = new %s();\n", targetClassName, targetClassName);
         for (String field : fieldsAndTheirTypes.keySet()) {
             pw.printf("instance.set%s(this.%s);\n", capitalize(field), field);
         }
-        pw.printf("return instance;\n")
-                .printf(closingBracketLineBreak());
+        pw.printf(returnAndClose("instance"));
     }
 
     public void writeFields() {
@@ -56,11 +54,10 @@ private final PrintWriter pw;
         for (Map.Entry<String, String> entry : fieldsAndTheirTypes.entrySet()) {
             final String parameterType = entry.getValue();
             final String parameterName = entry.getKey();
-            pw.printf("public %s with%s(%s %s){\n", classAndPackageName.getBuilderClassName(),
-                            capitalize(parameterName), parameterType, parameterName )
+            pw.printf("public %s with%s(%s %s) %s", classAndPackageName.getBuilderClassName(),
+                            capitalize(parameterName), parameterType, parameterName, openingBracketLineBreak())
                     .printf("this.%s = %s;\n", parameterName ,parameterName)
-                    .printf("return this;\n")
-                    .printf(closingBracketLineBreak());
+                    .printf(returnAndClose("this"));
         }
     }
 
@@ -70,6 +67,14 @@ private final PrintWriter pw;
 
     private String closingBracketLineBreak() {
         return "}\n";
+    }
+
+    private String openingBracketLineBreak() {
+        return "{\n";
+    }
+
+    private String returnAndClose(String what) {
+        return String.format("return %s;\n%s", what, closingBracketLineBreak());
     }
 
     public static String capitalize(String value) {

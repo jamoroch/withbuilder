@@ -72,7 +72,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
             } catch(NoConstructorFound e) {
                 return reportError("No constructor found!", annotatedElement);
             }
-            ClassAndPackageName classAndPackageName = ClassAndPackageName.from(typeElement, annotation.suffix());
+            ClassAndPackageName classAndPackageName = DefaultClassAndPackageName.from(typeElement, annotation.suffix());
 
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
