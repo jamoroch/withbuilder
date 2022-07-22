@@ -65,19 +65,22 @@ private final PrintWriter pw;
         pw.printf(closingBracketLineBreak());
     }
 
-    private String closingBracketLineBreak() {
+    String closingBracketLineBreak() {
         return "}\n";
     }
 
-    private String openingBracketLineBreak() {
+    String openingBracketLineBreak() {
         return "{\n";
     }
 
-    private String returnAndClose(String what) {
+    String returnAndClose(String what) {
         return String.format("return %s;\n%s", what, closingBracketLineBreak());
     }
 
     public static String capitalize(String value) {
+        if(value == null || value.isBlank()) {
+            throw new IllegalArgumentException(BuilderClassGenerator.class.getSimpleName()+"#capitalize does not accept null or blank strings");
+        }
         final String s = value.substring(0, 1).toUpperCase() +
                 value.substring(1).toLowerCase();
         return s;
