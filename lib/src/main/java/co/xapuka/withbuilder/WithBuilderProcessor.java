@@ -3,8 +3,6 @@
  */
 package co.xapuka.withbuilder;
 
-import co.xapuka.withbuilder.exception.NoConstructorFound;
-
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
 import javax.lang.model.SourceVersion;
@@ -18,6 +16,7 @@ import javax.tools.JavaFileObject;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -41,46 +40,54 @@ public class WithBuilderProcessor extends AbstractProcessor {
             pm("Processing WithBuilder...");
         }
         for(Element annotatedElement: annotatedElements) {
-            final WithBuilder annotation = annotatedElement.getAnnotation(WithBuilder.class);
             final List<? extends Element> enclosedElements = annotatedElement.getEnclosedElements();
-            final boolean isDebugActive = annotation.debug();
-            if(isDebugActive) {
-                pm("In Debugging");
-                enclosedElements.forEach(el -> {
-                    pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind());
-                    if(el instanceof ExecutableElement) {
-                        pm("ExecutableElement: " + ((ExecutableElement)el).getSimpleName().toString());
-                    }
-                });
-                return false;
+
+            final WithBuilder annotation = annotatedElement.getAnnotation(WithBuilder.class);
+            if(annotation.debug()) {
+                return debug(enclosedElements);
             }
 
-
-            Map<Boolean, List<Element>> partion = enclosedElements.stream().collect(Collectors.partitioningBy(this::onlyInstanceFields));
+            Map<Boolean, List<Element>> partition = enclosedElements.stream().collect(Collectors.partitioningBy(this::onlyInstanceFields));
             Map<String, String> fieldsAndTheirTypes =
-                    partion.get(true).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
+                    partition.get(true).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
 
-            boolean didValidate = validateSetters(partion.get(false).stream(), fieldsAndTheirTypes, annotatedElement);
+            boolean didValidate = validateSetters(partition.get(false).stream(), fieldsAndTheirTypes, annotatedElement);
 
             if(!didValidate) {
                 return true;
             }
 
-            TypeElement typeElement;
-            try {
-                typeElement = getTypeElement(annotatedElement);
-            } catch(NoConstructorFound e) {
-                return reportError("No constructor found!", annotatedElement);
+            ClassAndPackageName classAndPackageName = extractClassAndPackageName(annotatedElement, annotation);
+            if(classAndPackageName == null) {
+                return reportError("No default constructor found!", annotatedElement);
             }
-            ClassAndPackageName classAndPackageName = DefaultClassAndPackageName.from(typeElement, annotation.suffix());
 
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
             } catch (IOException e) {
                 return reportError(e.getMessage(), annotatedElement);
-            }
-        };
+            };
+        }
+        return false;
+    }
 
+    private ClassAndPackageName extractClassAndPackageName(Element annotatedElement, WithBuilder annotation){
+
+        TypeElement typeElement = getTypeElement(annotatedElement);
+        if(typeElement == null) {
+          return null;
+        }
+
+        return DefaultClassAndPackageName.from(typeElement, annotation.suffix());
+    }
+    private boolean debug(List<? extends Element> enclosedElements) {
+        pm("In Debugging");
+        enclosedElements.forEach(el -> {
+            pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind());
+            if(el instanceof ExecutableElement) {
+                pm("ExecutableElement: " + ((ExecutableElement)el).getSimpleName().toString());
+            }
+        });
         return false;
     }
 
@@ -144,14 +151,14 @@ public class WithBuilderProcessor extends AbstractProcessor {
     }
 
 
-    private TypeElement getTypeElement(Element element) throws NoConstructorFound {
+    private TypeElement getTypeElement(Element element) {
         TypeElement typeElement = element.getEnclosedElements()
                 .stream()
                 .filter(e -> CONSTRUCTOR == e.getKind())
                 .map(e -> e.getEnclosingElement())
                 .map(e -> (TypeElement) e)
                 .reduce((x, y) -> x)
-                .orElseThrow(NoConstructorFound::new);
+                .orElseGet(() -> null);
         return typeElement;
     }
 

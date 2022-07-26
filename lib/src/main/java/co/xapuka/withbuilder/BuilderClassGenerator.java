@@ -73,8 +73,8 @@ private final PrintWriter pw;
         return "{\n";
     }
 
-    String returnAndClose(String what) {
-        return String.format("return %s;\n%s", what, closingBracketLineBreak());
+    String returnAndClose(String value) {
+        return String.format("return %s;\n%s", value, closingBracketLineBreak());
     }
 
     public static String capitalize(String value) {
