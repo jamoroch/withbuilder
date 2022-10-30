@@ -8,4 +8,5 @@
  */
 
 rootProject.name = 'withbuilder'
-include('lib')
+include('annotation')
+include('example')
