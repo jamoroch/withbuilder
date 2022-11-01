@@ -24,9 +24,6 @@ import static javax.lang.model.element.Modifier.FINAL;
 import static javax.lang.model.element.Modifier.STATIC;
 
 public class WithBuilderProcessor extends AbstractProcessor {
-    public boolean someLibraryMethod() {
-        return true;
-    }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -36,17 +33,12 @@ public class WithBuilderProcessor extends AbstractProcessor {
 
         Set<? extends Element> annotatedElements = roundEnv.getElementsAnnotatedWith(WithBuilder.class);
         if(annotatedElements != null && !annotatedElements.isEmpty()) {
-            pm("Processing WithBuilder...");
+            printMessage("Processing WithBuilder...");
         }
         for(Element annotatedElement: annotatedElements) {
             final List<? extends Element> enclosedElements = annotatedElement.getEnclosedElements();
 
-            final WithBuilder annotation = annotatedElement.getAnnotation(WithBuilder.class);
-            if(annotation.debug()) {
-                return debug(enclosedElements);
-            }
-
-            Map<Boolean, List<Element>> partition = enclosedElements.stream().collect(Collectors.partitioningBy(this::onlyInstanceFields));
+            Map<Boolean, List<Element>> partition = enclosedElements.stream().collect(Collectors.partitioningBy(this::isOnlyInstanceFields));
             Map<String, String> fieldsAndTheirTypes =
                     partition.get(true).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e.asType().toString()));
 
@@ -56,42 +48,32 @@ public class WithBuilderProcessor extends AbstractProcessor {
                 return true;
             }
 
-            ClassAndPackageName classAndPackageName = extractClassAndPackageName(annotatedElement, annotation);
+            ClassAndPackageName classAndPackageName = extractClassAndPackageName(annotatedElement);
             if(classAndPackageName == null) {
-                return reportError("No default constructor found!", annotatedElement);
+                return printError("No default constructor found!", annotatedElement);
             }
 
             try {
                 writeFile(classAndPackageName, fieldsAndTheirTypes);
             } catch (IOException e) {
-                return reportError(e.getMessage(), annotatedElement);
+                return printError(e.getMessage(), annotatedElement);
             };
         }
         return false;
     }
 
-    private ClassAndPackageName extractClassAndPackageName(Element annotatedElement, WithBuilder annotation){
+    private ClassAndPackageName extractClassAndPackageName(Element annotatedElement){
 
         TypeElement typeElement = getTypeElement(annotatedElement);
         if(typeElement == null) {
           return null;
         }
 
-        return DefaultClassAndPackageName.from(typeElement, annotation.suffix());
-    }
-    private boolean debug(List<? extends Element> enclosedElements) {
-        pm("In Debugging");
-        enclosedElements.forEach(el -> {
-            pm(el.getSimpleName() + ":" + el.asType() + ":" +el.asType().getKind());
-            if(el instanceof ExecutableElement) {
-                pm("ExecutableElement: " + ((ExecutableElement)el).getSimpleName().toString());
-            }
-        });
-        return false;
+        return DefaultClassAndPackageName.from(typeElement, "Builder");
     }
 
     private boolean validateSetters(Stream<Element> noFields, Map<String, String> fieldsAndTheirTypes, Element annotatedElement) {
-        List<Element> setters = noFields.collect(Collectors.partitioningBy(this::onlySetter)).get(true);
+        List<Element> setters = noFields.collect(Collectors.partitioningBy(this::isOnlySetter)).get(true);
 
         Collection<String> onlyFieldNames = new ArrayList<>(fieldsAndTheirTypes.keySet());
 
@@ -103,7 +85,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
                 onlyFieldNames.remove(fieldName);
             }
         }
-        onlyFieldNames.stream().forEach( n -> reportError("No setter found for field " + n , annotatedElement));
+        onlyFieldNames.stream().forEach( n -> printError("No setter found for field " + n , annotatedElement));
 
         if(onlyFieldNames.size() != 0) {
             return false;
@@ -112,7 +94,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
         return true;
     }
 
-    private  boolean onlySetter(Element element) {
+    private  boolean isOnlySetter(Element element) {
         if(!(element instanceof ExecutableElement)) {
             return false;
         }
@@ -129,7 +111,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
         return true;
     }
 
-    private boolean onlyInstanceFields(Element e) {
+    private boolean isOnlyInstanceFields(Element e) {
         return (FIELD == e.getKind() ) &&
                 e.getModifiers().stream().filter(m -> (FINAL == m || STATIC == m)).count() == 0;
     }
@@ -142,7 +124,7 @@ public class WithBuilderProcessor extends AbstractProcessor {
 
             generator.writeInit();
             generator.writeMutators();
-            generator.withBuildMethod();
+            generator.writeBuildMethod();
             generator.writePrivateDefaultConstructor();
             generator.writeFields();
             generator.writeEnd();
@@ -171,11 +153,11 @@ public class WithBuilderProcessor extends AbstractProcessor {
         return Set.of(WithBuilder.class.getName());
     }
 
-    private void pm(String message) {
+    private void printMessage(String message) {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, message);
     }
 
-    private boolean reportError (String message, Element element) {
+    private boolean printError(String message, Element element) {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, message, element);
         return true;
     }

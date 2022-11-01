@@ -33,7 +33,7 @@ private final PrintWriter pw;
 
     }
 
-    public void withBuildMethod() {
+    public void writeBuildMethod() {
         final String targetClassName = classAndPackageName.getClassName();
 
         pw.printf("public %s build() %s", targetClassName, openingBracketLineBreak())

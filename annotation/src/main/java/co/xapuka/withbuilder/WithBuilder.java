@@ -10,6 +10,4 @@ import java.lang.annotation.*;
  * Provides a class with a code-generated object builder
  */
 public @interface WithBuilder {
-    String suffix() default "Builder";
-    boolean debug() default false;
 }
